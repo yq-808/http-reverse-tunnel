@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+*.pid
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.secrets
+secrets.*
