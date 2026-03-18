@@ -23,10 +23,12 @@ bash scripts/check-ssh.sh
 bash scripts/start-reverse-tunnel.sh
 ```
 
+If `TUNNEL_REMOTE_PORT` is unset, it defaults to `TUNNEL_LOCAL_PORT` so both ends stay consistent by default.
+
 ## Example with local SDK server
 
-If your local SDK server listens on `127.0.0.1:8787` and `TUNNEL_REMOTE_PORT=18787`, then on the remote machine:
+If your local SDK server listens on `127.0.0.1:8787` and `TUNNEL_REMOTE_PORT=8787`, then on the remote machine:
 
 ```bash
-curl http://127.0.0.1:18787/healthz
+curl http://127.0.0.1:8787/healthz
 ```
