@@ -67,6 +67,69 @@ if [[ "${TUNNEL_HEALTH_PATH}" != /* ]]; then
   TUNNEL_HEALTH_PATH="/${TUNNEL_HEALTH_PATH}"
 fi
 
+lock_root="${PROJECT_ROOT}/.run"
+supervisor_lock_dir=""
+supervisor_lock_pid_file=""
+
+sanitize_lock_component() {
+  printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'
+}
+
+lock_name="$(
+  printf '%s__%s__%s__%s__%s__%s' \
+    "$(sanitize_lock_component "${TUNNEL_SSH_USER}")" \
+    "$(sanitize_lock_component "${TUNNEL_SSH_HOST}")" \
+    "$(sanitize_lock_component "${TUNNEL_REMOTE_BIND_HOST}")" \
+    "$(sanitize_lock_component "${TUNNEL_REMOTE_PORT}")" \
+    "$(sanitize_lock_component "${TUNNEL_LOCAL_HOST}")" \
+    "$(sanitize_lock_component "${TUNNEL_LOCAL_PORT}")"
+)"
+supervisor_lock_dir="${lock_root}/supervisor-${lock_name}.lock"
+supervisor_lock_pid_file="${supervisor_lock_dir}/pid"
+
+acquire_supervisor_lock() {
+  local owner_pid=""
+
+  mkdir -p "${lock_root}"
+
+  if mkdir "${supervisor_lock_dir}" 2>/dev/null; then
+    printf '%s\n' "$$" > "${supervisor_lock_pid_file}"
+    return
+  fi
+
+  if [[ -f "${supervisor_lock_pid_file}" ]]; then
+    owner_pid="$(cat "${supervisor_lock_pid_file}" 2>/dev/null || true)"
+  fi
+
+  if [[ -n "${owner_pid}" ]] && kill -0 "${owner_pid}" >/dev/null 2>&1; then
+    echo "Another tunnel supervisor is already running (pid=${owner_pid}) for ${TUNNEL_SSH_USER}@${TUNNEL_SSH_HOST} ${TUNNEL_REMOTE_BIND_HOST}:${TUNNEL_REMOTE_PORT} -> ${TUNNEL_LOCAL_HOST}:${TUNNEL_LOCAL_PORT}. Exiting."
+    exit 1
+  fi
+
+  echo "Found stale supervisor lock. Reclaiming lock..."
+  rm -rf "${supervisor_lock_dir}" 2>/dev/null || true
+
+  if mkdir "${supervisor_lock_dir}" 2>/dev/null; then
+    printf '%s\n' "$$" > "${supervisor_lock_pid_file}"
+    return
+  fi
+
+  echo "Failed to acquire supervisor lock at ${supervisor_lock_dir}." >&2
+  exit 1
+}
+
+release_supervisor_lock() {
+  local owner_pid=""
+
+  if [[ -f "${supervisor_lock_pid_file}" ]]; then
+    owner_pid="$(cat "${supervisor_lock_pid_file}" 2>/dev/null || true)"
+  fi
+
+  if [[ "${owner_pid}" == "$$" ]]; then
+    rm -rf "${supervisor_lock_dir}" 2>/dev/null || true
+  fi
+}
+
 ssh_base_args=(
   -i "${TUNNEL_SSH_KEY_PATH}"
   -o IdentitiesOnly=yes
@@ -77,6 +140,7 @@ ssh_base_args=(
 
 tunnel_pid=""
 stopping="0"
+cleaned_up="0"
 
 start_tunnel() {
   ssh \
@@ -112,11 +176,18 @@ remote_tunnel_health_check() {
 }
 
 cleanup() {
+  if [[ "${cleaned_up}" == "1" ]]; then
+    return
+  fi
+  cleaned_up="1"
   stopping="1"
   stop_tunnel
+  release_supervisor_lock
 }
 
-trap cleanup INT TERM
+acquire_supervisor_lock
+
+trap cleanup EXIT INT TERM
 
 echo "Starting reverse tunnel supervisor..."
 echo "Remote SSH: ${TUNNEL_SSH_USER}@${TUNNEL_SSH_HOST}"

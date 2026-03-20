@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 .DS_Store
+/.run/
 *.log
 *.pid
 *.pem
