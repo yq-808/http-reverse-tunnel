@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+timestamp_logs() {
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    printf '[%(%Y-%m-%d %H:%M:%S)T] %s\n' -1 "${line}"
+  done
+}
+
+exec > >(timestamp_logs)
+exec 2> >(timestamp_logs >&2)
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
