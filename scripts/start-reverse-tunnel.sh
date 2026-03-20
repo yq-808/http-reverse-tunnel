@@ -210,6 +210,9 @@ while [[ "${stopping}" == "0" ]]; do
 
     if is_enabled "${TUNNEL_HEALTH_ENABLED}"; then
       if remote_tunnel_health_check; then
+        if (( failures > 0 )); then
+          echo "Tunnel health check recovered after ${failures} failed attempt(s)."
+        fi
         failures="0"
       else
         failures="$((failures + 1))"
